@@ -59,9 +59,8 @@ class CommandHandler(opendnp3.ICommandHandler):
 
     def Select(self, command, index, op_type):
         print(f"Select command: {command}, index: {index}, type: {op_type}")
-        if isinstance(command, opendnp3.AnalogOutputInt16) and (index == 0 or index == 1):
+        if isinstance(command, opendnp3.AnalogOutputInt16) and index == 1:
             self.selected_index = index
-            print(f"Selected index: {self.selected_index}")
             return opendnp3.CommandStatus.SUCCESS
         return opendnp3.CommandStatus.NOT_SUPPORTED
 
@@ -69,19 +68,18 @@ class CommandHandler(opendnp3.ICommandHandler):
         print(f"Operate command: {command}, index: {index}, type: {op_type}")
         if isinstance(command, opendnp3.AnalogOutputInt16) and self.selected_index == index:
             value = command.value
+            print(f"Analog value received for index {index}: {value}")
+
+            # Update the outstation database with the received value
             builder = asiodnp3.UpdateBuilder()
             analog = opendnp3.Analog(value, opendnp3.Flags(opendnp3.AnalogQuality.ONLINE), opendnp3.DNPTime(0))
-            print(f"Analog value: {value}")
-            if index == 0:  # ATLAS_SETPOINT_INSTRUCTION
-                builder.Update(analog, 4)  # Update ATLAS_SETPOINT_INSTRUCTION
-                outstation.Apply(builder.Build())
-                builder.Update(analog, 6)  # Echo the value to ATLAS_SETPOINT_INSTRUCTION.oper
-                outstation.Apply(builder.Build())
-            elif index == 1:  # ATLAS_SETPOINT_INSTRUCTION.status
-                builder.Update(analog, 1)  # Update ATLAS_SETPOINT_ECHO
-                outstation.Apply(builder.Build())
-                builder.Update(analog, 5)  # Update ATLAS_SETPOINT_INSTRUCTION.status
-                outstation.Apply(builder.Build())
+            builder.Update(analog, 1)  # Update Atlas_Client_DNP.ATLAS_SETPOINT_INSTRUCTION.status
+            outstation.Apply(builder.Build())
+
+            # Echo the value to Atlas_Client_DNP.ATLAS_SETPOINT_ECHO
+            builder.Update(analog, 2)  # Update Atlas_Client_DNP.ATLAS_SETPOINT_ECHO
+            outstation.Apply(builder.Build())
+
             self.selected_index = None
             return opendnp3.CommandStatus.SUCCESS
         return opendnp3.CommandStatus.NO_SELECT
@@ -104,13 +102,6 @@ class CustomOutstationApplication(opendnp3.IOutstationApplication):
     def OnReceiveIIN(self, iin):
         print(f"Polling attempt received with IIN: {iin}")
 
-    def OnStateChange(self, value):
-        print(f"Link state changed: {value}")
-        if value == opendnp3.LinkStatus.UNRESET:
-            self.HandleResetLinkStates()
-        elif value == opendnp3.LinkStatus.RESET:
-            print("Link state is now RESET")
-
     def OnKeepAliveInitiated(self):
         print("Keep alive initiated")
 
@@ -122,23 +113,18 @@ class CustomOutstationApplication(opendnp3.IOutstationApplication):
 
     def HandleResetLinkStates(self):
         print("Handling RESET_LINK_STATES")
-        # Add custom logic here to handle the reset, such as resetting internal states or counters
         self.ResetInternalStates()
-        # No explicit transition to RESET state is needed; the DNP3 stack will handle it.
 
     def ResetInternalStates(self):
         print("Resetting internal states")
-        # Implement your internal state reset logic here
-        self.counter = 0  # Example counter reset
-        self.temp_data_buffer = []  # Example buffer clear
-        # Add more reset logic as needed
-
+        self.counter = 0
+        self.temp_data_buffer = []
 
 outstation_application = CustomOutstationApplication()
 
 # Configure the outstation stack
 database_sizes = opendnp3.DatabaseSizes()
-database_sizes.numAnalog = 7  # 7 analog values
+database_sizes.numAnalog = 3  # Adjust as needed
 
 outstation_config = asiodnp3.OutstationStackConfig(database_sizes)
 outstation_config.link.LocalAddr = 1
@@ -157,21 +143,17 @@ outstation = channel.AddOutstation(
 )
 print("Outstation created")
 
-# Initialize the database with 7 analog values and set specific values
+# Initialize the database with initial analog values
 def initialize_database(outstation):
     builder = asiodnp3.UpdateBuilder()
     analog_values = {
         0: 1,  # ATLAS_AGC_STATUS_CMOD.instMag - RTAC Analog Input
-        1: 2,  # ATLAS_SETPOINT_ECHO.instMag - RTAC Analog Input
-        2: 3,  # ATLAS_NET_MW.instMag - RTAC Analog Input
-        3: 4,  # ATLAS_LOAD.instMag - RTAC Analog Input
-        4: 5,  # ATLAS_SETPOINT_INSTRUCTION - RTAC Analog Output
-        5: 6,  # Atlas_Client_DNP.ATLAS_SETPOINT_INSTRUCTION.status - RTAC Analog Output
-        6: 7   # Atlas_Client_DNP.ATLAS_SETPOINT_INSTRUCTION.oper - RTAC Analog Output
+        1: 0,  # ATLAS_SETPOINT_ECHO.instMag - RTAC Analog Input (initially 0)
+        2: 0   # ATLAS_SETPOINT_INSTRUCTION.status - RTAC Analog Output (initially 0)
     }
-    for i, value in analog_values.items():
+    for index, value in analog_values.items():
         analog = opendnp3.Analog(value, opendnp3.Flags(opendnp3.AnalogQuality.ONLINE), opendnp3.DNPTime(0))
-        builder.Update(analog, i)
+        builder.Update(analog, index)
     outstation.Apply(builder.Build())
 
 initialize_database(outstation)
