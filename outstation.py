@@ -59,9 +59,11 @@ class CommandHandler(opendnp3.ICommandHandler):
 
     def Select(self, command, index, op_type):
         print(f"Select command: {command}, index: {index}, type: {op_type}")
-        if isinstance(command, opendnp3.AnalogOutputInt16) and index == 1:
+        if isinstance(command, opendnp3.AnalogOutputInt16) and index == 2:
             self.selected_index = index
+            print(f"Selected index: {self.selected_index}")
             return opendnp3.CommandStatus.SUCCESS
+        print("Select command not supported")
         return opendnp3.CommandStatus.NOT_SUPPORTED
 
     def Operate(self, command, index, op_type):
@@ -73,15 +75,15 @@ class CommandHandler(opendnp3.ICommandHandler):
             # Update the outstation database with the received value
             builder = asiodnp3.UpdateBuilder()
             analog = opendnp3.Analog(value, opendnp3.Flags(opendnp3.AnalogQuality.ONLINE), opendnp3.DNPTime(0))
-            builder.Update(analog, 1)  # Update Atlas_Client_DNP.ATLAS_SETPOINT_INSTRUCTION.status
+            builder.Update(analog, 2)  # Update Atlas_Client_DNP.ATLAS_SETPOINT_INSTRUCTION.status
+            builder.Update(analog, 1)  # Echo value to Atlas_Client_DNP.ATLAS_SETPOINT_ECHO
             outstation.Apply(builder.Build())
 
-            # Echo the value to Atlas_Client_DNP.ATLAS_SETPOINT_ECHO
-            builder.Update(analog, 2)  # Update Atlas_Client_DNP.ATLAS_SETPOINT_ECHO
-            outstation.Apply(builder.Build())
+            print(f"Updated Atlas_Client_DNP.ATLAS_SETPOINT_INSTRUCTION.status and echoed value to Atlas_Client_DNP.ATLAS_SETPOINT_ECHO with value: {value}")
 
             self.selected_index = None
             return opendnp3.CommandStatus.SUCCESS
+        print("Operate command not supported or no selected index")
         return opendnp3.CommandStatus.NO_SELECT
 
     def DirectOperate(self, command, index, op_type):
